@@ -49,14 +49,16 @@ server.post('/register', async (req, res) => {
   }
 
   try {
-    const hashedPassword = await bcrypt.hash(payload.password, 10); // Čia hashuojamas slaptažodis su 10 slėptuvėmis
-    await dbPool.execute(
+    const hashedPassword = await bcrypt.hash(payload.password, 10);
+    const [result] = await dbPool.execute(
       `
-            INSERT INTO user (name, email, password)
-            VALUES (?,?,?)`,
+              INSERT INTO user (name, email, password)
+              VALUES (?,?,?)`,
       [payload.name, payload.email, hashedPassword]
     );
-    res.status(201).json({ message: 'User added succesfuly.' });
+    const userId = result.insertId;
+
+    res.status(201).json({ message: 'User added succesfuly.', userId });
   } catch (error) {
     console.error(error);
     res.status(500).end();
@@ -127,23 +129,28 @@ server.get('/guests', authenticate, async (req, res) => {
   }
 });
 
-server.post('/register-user', async (req, res) => {
+server.post('/register-user', authenticate, async (req, res) => {
   let payload = req.body;
 
   try {
     payload = await guestSchema.validateAsync(payload);
   } catch (error) {
     console.error(error);
-
     return res.status(400).send({ error: 'All fields are required' });
   }
 
   try {
-    await dbPool.execute(
+    const [result] = await dbPool.execute(
       `
-        INSERT INTO guests (firstName, lastName, age, email)
-        VALUES (?,?,?,?)`,
-      [payload.firstName, payload.lastName, payload.age, payload.email]
+          INSERT INTO guests (firstName, lastName, age, email, user_id)
+          VALUES (?,?,?,?,?)`,
+      [
+        payload.firstName,
+        payload.lastName,
+        payload.age,
+        payload.email,
+        req.user.id,
+      ]
     );
     res.status(201).json({ message: 'Guest added succesfuly.' });
   } catch (error) {
@@ -171,7 +178,7 @@ server.put('/guests/:id', async (req, res) => {
     updatedGuest['lastName'] = payload.lastName;
     updatedGuest['age'] = payload.age;
     updatedGuest['email'] = payload.email;
-
+    console.log('Atnaujinimo užklausa:', updatedGuest);
     res.status(200).json({ message: 'Guest data is updated.' });
   } else {
     res.status(404).json({ message: 'Guest not found.' });
